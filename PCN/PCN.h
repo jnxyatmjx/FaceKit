@@ -30,6 +30,9 @@ struct Window
     Window(int x_, int y_, int w_, int a_, float s_, std::vector<cv::Point> p14_)
         : x(x_), y(y_), width(w_), angle(a_), score(s_), points14(p14_)
     {}
+    ~Window(){
+        points14.clear();
+    }
 };
 
 cv::Point RotatePoint(float x, float y, float centerX, float centerY, float angle)
@@ -117,6 +120,7 @@ class PCN
 public:
     PCN(std::string modelDetect, std::string net1, std::string net2, std::string net3,
         std::string modelTrack, std::string netTrack);
+    ~PCN();
     /// detection
     void SetMinFaceSize(int minFace);
     void SetDetectionThresh(float thresh1, float thresh2, float thresh3);
@@ -130,6 +134,12 @@ public:
 
 private:
     void* impl_;
+    // std::string md_;
+    // std::string mt_;
+    // std::string nt_;
+    // std::string n1_;
+    // std::string n2_;
+    // std::string n3_;
 };
 
 #endif

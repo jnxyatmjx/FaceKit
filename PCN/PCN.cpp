@@ -1,5 +1,6 @@
 #include "PCN.h"
 #include "PCN_API.h"
+#include <glog/logging.h>
 
 struct Window2
 {
@@ -9,6 +10,9 @@ struct Window2
     Window2(int x_, int y_, int w_, int h_, float a_, float s_, float c_)
         : x(x_), y(y_), w(w_), h(h_), angle(a_), scale(s_), conf(c_)
     {}
+    ~Window2(){
+        points14.clear();
+    }
 };
 
 class Impl
@@ -16,12 +20,13 @@ class Impl
 public:
     void LoadModel(std::string modelDetect, std::string net1, std::string net2, std::string net3,
                    std::string modelTrack, std::string netTrack);
-    cv::Mat ResizeImg(cv::Mat img, float scale);
+    void ReleaseModel();
+    cv::Mat ResizeImg(cv::Mat &img, float scale);
     static bool CompareWin(const Window2 &w1, const Window2 &w2);
     bool Legal(int x, int y, cv::Mat img);
     bool Inside(int x, int y, Window2 rect);
     int SmoothAngle(int a, int b);
-    std::vector<Window2> SmoothWindow(std::vector<Window2> winList);
+    std::vector<Window2> SmoothWindow(std::vector<Window2> &winList);
     float IoU(Window2 &w1, Window2 &w2);
     std::vector<Window2> NMS(std::vector<Window2> &winList, bool local, float threshold);
     std::vector<Window2> DeleteFP(std::vector<Window2> &winList);
@@ -29,7 +34,7 @@ public:
     cv::Mat PreProcessImg(cv::Mat img,  int dim);
     void SetInput(cv::Mat input, caffe::shared_ptr<caffe::Net<float> > &net);
     void SetInput(std::vector<cv::Mat> &input, caffe::shared_ptr<caffe::Net<float> > &net);
-    cv::Mat PadImg(cv::Mat img);
+    cv::Mat PadImg(cv::Mat &img);
     std::vector<Window> TransWindow(cv::Mat img, cv::Mat imgPad, std::vector<Window2> &winList);
     std::vector<Window2> Stage1(cv::Mat img, cv::Mat imgPad, caffe::shared_ptr<caffe::Net<float> > &net, float thres);
     std::vector<Window2> Stage2(cv::Mat img, cv::Mat img180,
@@ -59,6 +64,19 @@ PCN::PCN(std::string modelDetect, std::string net1, std::string net2, std::strin
 {
     Impl *p = (Impl *)impl_;
     p->LoadModel(modelDetect, net1, net2, net3, modelTrack, netTrack);
+    // md_ = modelDetect;
+    // mt_ = modelTrack;
+    // nt_ = netTrack;
+    // n1_ = net1;
+    // n2_ = net2;
+    // n3_ = net3;
+    //p->LoadModel(md_, n1_, n2_, n3_, mt_, nt_);
+}
+
+PCN::~PCN(void){
+    Impl *p = (Impl *)impl_;
+    p->ReleaseModel();
+    delete p; p = nullptr;
 }
 
 void PCN::SetVideoSmooth(bool stable)
@@ -117,7 +135,7 @@ std::vector<Window> PCN::Detect(cv::Mat img)
     {
         winList[i].points14 = pointsList[i].points14;
     }
-
+    LOG(INFO) << "imgPad refcnt-> " << imgPad.u->refcount <<" stable_:" <<p->stable_;
     if (p->stable_)
     {
         winList = p->SmoothWindow(winList);
@@ -161,8 +179,6 @@ void Impl::LoadModel(std::string modelDetect, std::string net1, std::string net2
                      std::string modelTrack, std::string netTrack)
 {
     caffe::Caffe::set_mode(caffe::Caffe::CPU);
-    google::InitGoogleLogging("VR");
-    FLAGS_logtostderr = 0;
 
     net_[0].reset(new caffe::Net<float>(net1.c_str(), caffe::TEST));
     net_[0]->CopyTrainedLayersFrom(modelDetect.c_str());
@@ -173,8 +189,20 @@ void Impl::LoadModel(std::string modelDetect, std::string net1, std::string net2
 
     net_[3].reset(new caffe::Net<float>(netTrack.c_str(), caffe::TEST));
     net_[3]->CopyTrainedLayersFrom(modelTrack.c_str());
+    if ( !google::kLogSiteUninitialized ){
+        google::InitGoogleLogging("VR");
+        FLAGS_logtostderr = true;
+        FLAGS_colorlogtostderr = true;
+    }
+    //google::ShutdownGoogleLogging();
+}
 
-    google::ShutdownGoogleLogging();
+void Impl::ReleaseModel(){
+    net_[0].reset();
+    net_[1].reset();
+    net_[2].reset();
+    net_[3].reset();
+    LOG(INFO) << "Release Model Manual";
 }
 
 cv::Mat Impl::PreProcessImg(cv::Mat img)
@@ -210,6 +238,7 @@ void Impl::SetInput(cv::Mat input, caffe::shared_ptr<caffe::Net<float> > &net)
         memcpy(p, tmp[i].data, sizeof(float) * length);
         p += length;
     }
+    tmp.clear();
 }
 
 void Impl::SetInput(std::vector<cv::Mat> &input, caffe::shared_ptr<caffe::Net<float> > &net)
@@ -230,9 +259,10 @@ void Impl::SetInput(std::vector<cv::Mat> &input, caffe::shared_ptr<caffe::Net<fl
             p += length;
         }
     }
+    tmp.clear();
 }
 
-cv::Mat Impl::ResizeImg(cv::Mat img, float scale)
+cv::Mat Impl::ResizeImg(cv::Mat &img, float scale)
 {
     cv::Mat ret;
     cv::resize(img, ret, cv::Size(int(img.cols / scale), int(img.rows / scale)));
@@ -334,7 +364,7 @@ std::vector<Window2> Impl::DeleteFP(std::vector<Window2> &winList)
 }
 
 /// to detect faces on the boundary
-cv::Mat Impl::PadImg(cv::Mat img)
+cv::Mat Impl::PadImg(cv::Mat &img)
 {
     int row = std::min(int(img.rows * 0.2), 100);
     int col = std::min(int(img.cols * 0.2), 100);
@@ -572,9 +602,10 @@ std::vector<Window> Impl::TransWindow(cv::Mat img, cv::Mat imgPad, std::vector<W
     return ret;
 }
 
-std::vector<Window2> Impl::SmoothWindow(std::vector<Window2> winList)
+std::vector<Window2> Impl::SmoothWindow(std::vector<Window2> &winList)
 {
     static std::vector<Window2> preList;
+    LOG(INFO) << "PreList--->" << preList.size();
     for (int i = 0; i < winList.size(); i++)
     {
         for (int j = 0; j < preList.size(); j++)
@@ -610,6 +641,9 @@ std::vector<Window2> Impl::SmoothWindow(std::vector<Window2> winList)
         }
     }
     preList = winList;
+    // preList.clear();
+    // preList.reserve(winList.size());
+    // preList.insert(preList.end(), winList.begin(), winList.end());
     return winList;
 }
 

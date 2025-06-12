@@ -4,8 +4,8 @@ import cv2
 import numpy as np
 import sys
 import os
-import time
-from ipdb import set_trace as dbg
+import time, random
+#from ipdb import set_trace as dbg
 from enum import IntEnum
 
 class CPoint(Structure):
@@ -38,7 +38,8 @@ class FeatEnam(IntEnum):
     MOUTH_RIGHT = 13
     FEAT_POINTS = 14
 
-lib = CDLL("/usr/local/lib/libPCN.so")
+#lib = CDLL("/usr/local/lib/libPCN.so")
+lib = CDLL("./libPCN.so")
 
 init_detector = lib.init_detector
 #void *init_detector(const char *detection_model_path, 
@@ -79,7 +80,7 @@ GREEN=(0,255,0)
 YELLOW=(0,255,255)
 
 def DrawFace(win,img):
-    width = 2
+    width = 1
     x1 = win.x
     y1 = win.y
     x2 = win.width + win.x - 1
@@ -115,12 +116,30 @@ def SetThreadCount(threads):
 def c_str(str_in):
     return c_char_p(str_in.encode('utf-8'))
 
+def RotateFace(img, win):
+    # x, y, w = win.x, win.y, win.width
+    # angle = win.angle
+    # center = (x + w // 2, y + w // 2)
+    w = win.width
+    x1 = win.x
+    y1 = win.y
+    x2 = win.width + win.x - 1
+    y2 = win.width + win.y - 1
+    centerX = (x1 + x2) / 2
+    centerY = (y1 + y2) / 2
+    angle = win.angle
+    M = cv2.getRotationMatrix2D((centerX,centerY), -angle, 1.0)
+    rotated = cv2.warpAffine(img, M, (img.shape[1], img.shape[0]), flags=cv2.INTER_LINEAR)
+    face_patch = rotated[y1: y1+w, x1: x1+w]
+    return face_patch
+
 video_flag = 0
 
 if __name__=="__main__":
 
-    SetThreadCount(1)
-    path = '/usr/local/share/pcn/'
+    SetThreadCount(2)
+    #path = '/usr/local/share/pcn/'
+    path = '/home/hkm/FaceKit/PCN/model/'
     detection_model_path = c_str(path + "PCN.caffemodel")
     pcn1_proto = c_str(path + "PCN-1.prototxt")
     pcn2_proto = c_str(path + "PCN-2.prototxt")
@@ -159,22 +178,25 @@ if __name__=="__main__":
         detector = init_detector(detection_model_path,pcn1_proto,pcn2_proto,pcn3_proto,
 		    	tracking_model_path,tracking_proto, 
 		    	40,1.45,0.5,0.5,0.98,30,0.9,0)
-        for i in range(1, 27):
-            frame = cv2.imread("imgs/" + str(i) + ".jpg")
-            start = time.time()
+        #for i in range(1, 27):
+        while(True):
+            i = random.randint(1, 24)
+            #frame = cv2.imread("/passport/teleima/" + str(i) + ".jpg")
+            frame = cv2.imread("/home/hkm/FaceKit/PCN/imgs/" + str(i) + ".jpg")
+            #start = time.time()
             face_count = c_int(0)
             raw_data = frame.ctypes.data_as(POINTER(c_ubyte))
             windows = detect_faces(detector, raw_data, 
                     frame.shape[0], frame.shape[1],
                     pointer(face_count))
-            end = time.time()
-            print(i, end - start, "s")
-            for i in range(face_count.value):
-                DrawFace(windows[i],frame)
-                DrawPoints(windows[i],frame)
+            #end = time.time()
+            print("Shape:{0} id:{1}".format(frame.shape,os.getpid()))
+            # for i in range(face_count.value):
+            #     DrawFace(windows[i],frame)
+            #     DrawPoints(windows[i],frame)
             free_faces(windows)
-            cv2.imshow('PCN', frame)
-            cv2.waitKey()
+            # cv2.imshow('PCN', frame)
+            # cv2.waitKey()
 
     free_detector(detector)
 
