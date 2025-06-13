@@ -180,17 +180,18 @@ if __name__=="__main__":
 		    	40,1.45,0.5,0.5,0.98,30,0.9,0)
         #for i in range(1, 27):
         while(True):
-            i = random.randint(1, 24)
-            #frame = cv2.imread("/passport/teleima/" + str(i) + ".jpg")
-            frame = cv2.imread("/home/hkm/FaceKit/PCN/imgs/" + str(i) + ".jpg")
+            i = random.randint(1, 210)
+            frame = cv2.imread("/passport/teleima/" + str(i) + ".jpg")
+            #frame = cv2.imread("/home/hkm/FaceKit/PCN/imgs/" + str(i) + ".jpg")
             #start = time.time()
             face_count = c_int(0)
+            print("File:{0}".format(i))
             raw_data = frame.ctypes.data_as(POINTER(c_ubyte))
             windows = detect_faces(detector, raw_data, 
                     frame.shape[0], frame.shape[1],
                     pointer(face_count))
             #end = time.time()
-            print("Shape:{0} id:{1}".format(frame.shape,os.getpid()))
+            print("Shape:{0} id:{1} faces:{2}".format(frame.shape,os.getpid(),face_count.value))
             # for i in range(face_count.value):
             #     DrawFace(windows[i],frame)
             #     DrawPoints(windows[i],frame)
